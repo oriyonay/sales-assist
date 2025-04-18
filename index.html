@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang='en' class="light">
+<head>
+  <meta charset='UTF-8'>
+  <meta name='viewport' content='width=device-width, initial-scale=1.0'>
+  <title>CourseShare Sales Assist</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Enable dark mode based on class -->
+  <script>
+    tailwind.config = {
+      darkMode: 'class'
+    };
+  </script>
+  <!-- Cytoscape.js for interactive tree view -->
+  <script src="https://unpkg.com/cytoscape/dist/cytoscape.min.js"></script>
+  <style>
+    .fade-enter { opacity: 0; transform: translateY(10px); }
+    .fade-enter-active { opacity: 1; transform: translateY(0); transition: opacity 300ms ease-out, transform 300ms ease-out; }
+    .disabled { opacity: 0.5; pointer-events: none; }
+    #treeContainer { position: relative; }
+    #treeView { height: 300px; border: 1px solid #e5e7eb; border-radius: 0.5rem; }
+    .add-edge-active { border: 2px solid #F59E0B; }
+    #fsBtn { position: absolute; top: 0.5rem; right: 2.5rem; background: #E5E7EB; padding: 0.5rem; border-radius: 0.25rem; z-index: 10; cursor: pointer; }
+    #fsBtn:hover { background: #D1D5DB; }
+    #darkModeBtn { position: absolute; top: 0.5rem; right: 0.5rem; background: #E5E7EB; padding: 0.5rem; border-radius: 0.25rem; z-index: 10; cursor: pointer; }
+    #darkModeBtn:hover { background: #D1D5DB; }
+    /* Expanded tree view within app */
+    #treeContainer.expanded {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: white;
+      z-index: 1000;
+      padding: 1rem;
+    }
+    .dark #treeContainer.expanded {
+      background: #374151;
+    }
+    #treeContainer.expanded #treeView {
+      height: calc(100% - 2rem);
+    }
+    /* Dark mode overrides */
+    .dark body { background: #1f2937; }
+    .dark #app { background: #374151; }
+    .dark #content { color: #f9fafb; }
+    .dark .node { background: #4f46e5; }
+  </style>
+</head>
+<body class="bg-gray-100 dark:bg-gray-800 flex items-start justify-center p-4 min-h-screen">
+  <div id="app" class="w-full max-w-4xl bg-white dark:bg-gray-900 rounded-2xl shadow-lg p-6 flex flex-col">
+    <h1 class="text-2xl font-bold text-center text-indigo-600 dark:text-indigo-300">CourseShare Sales Assist</h1>
+    <div class="mt-4 flex flex-wrap gap-2 relative">
+      <button id="undoBtn" class="bg-gray-200 dark:bg-gray-600 text-gray-800 dark:text-gray-200 px-4 py-2 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-500 transition">Undo</button>
+      <button id="redoBtn" class="bg-gray-200 dark:bg-gray-600 text-gray-800 dark:text-gray-200 px-4 py-2 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-500 transition">Redo</button>
+      <button id="deleteBtn" class="bg-red-500 text-white px-4 py-2 rounded-lg hover:bg-red-600 transition">Delete Line</button>
+      <button id="backBtn" class="bg-gray-500 text-white px-4 py-2 rounded-lg hover:bg-gray-600 transition">Go Back</button>
+      <button id="saveBtn" class="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 transition">Save</button>
+      <button id="loadBtn" class="bg-indigo-500 text-white px-4 py-2 rounded-lg hover:bg-indigo-600 transition">Load</button>
+      <button id="darkModeBtn">🌓</button>
+    </div>
+    <div class="mt-4 flex">
+      <input id="newResponse" type="text" placeholder="Add new response..." class="$1 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200" />
+    </div>
+    <div id="content" class="mt-6 flex-1 text-gray-800 dark:text-gray-200"></div>
+    <div id="treeContainer" class="mt-4">
+      <button id="fsBtn">⛶</button>
+      <div id="treeView"></div>
+    </div>
+    <input id="fileInput" type="file" accept=".json" class="hidden">
+  </div>
+
+  <script>
+    // Dark Mode Toggle
+    const darkModeBtn = document.getElementById('darkModeBtn');
+    darkModeBtn.onclick = () => {
+      document.documentElement.classList.toggle('dark');
+    };
+    // State and history
+    let script = { text: 'Start here', responses: [] };
+    let path = [];
+    let past = [], future = [];
+    let editingLine = false;
+    let cy;
+    let connectionSource = null;
+    let lastTapTime = 0, lastTapNodeId = null;
+
+    // DOM refs
+    const contentEl = document.getElementById('content');
+    const newResponseEl = document.getElementById('newResponse');
+    const undoBtn = document.getElementById('undoBtn');
+    const redoBtn = document.getElementById('redoBtn');
+    const deleteBtn = document.getElementById('deleteBtn');
+    const backBtn = document.getElementById('backBtn');
+    const saveBtn = document.getElementById('saveBtn');
+    const loadBtn = document.getElementById('loadBtn');
+    const fileInput = document.getElementById('fileInput');
+    const fsBtn = document.getElementById('fsBtn');
+    const treeViewEl = document.getElementById('treeView');
+    const treeContainer = document.getElementById('treeContainer');
+
+    // Helpers
+    function deepClone(obj) { return JSON.parse(JSON.stringify(obj)); }
+    function getCurrent() { return path.reduce((n,i) => n.responses[i], script); }
+    function getParent() { return path.length > 1 ? path.slice(0,-1).reduce((n,i)=>n.responses[i], script) : script; }
+    function record() { past.push(deepClone(script)); future = []; updateControls(); }
+    function updateControls() {
+      undoBtn.disabled = past.length === 0;
+      redoBtn.disabled = future.length === 0;
+      backBtn.disabled = path.length === 0;
+      deleteBtn.disabled = path.length === 0;
+    }
+
+    // Commit line edit
+    function commitEdit(newText) {
+      record();
+      getCurrent().text = newText;
+      editingLine = false;
+      render();
+    }
+
+    // Get node in script by its Cytoscape id
+    function getNodeById(id) {
+      if (id === '0') return script;
+      const parts = id.split('-').slice(1).map(n=>parseInt(n,10));
+      let node = script;
+      for (let idx of parts) node = node.responses[idx];
+      return node;
+    }
+
+    // Render content area
+    function renderContent() {
+      const current = getCurrent();
+      contentEl.innerHTML = '';
+      if (editingLine) {
+        const input = document.createElement('input');
+        input.value = current.text;
+        input.className = 'border border-gray-400 dark:border-gray-600 rounded px-2 py-1 w-full bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200';
+        input.onblur = () => commitEdit(input.value);
+        input.onkeydown = e => { if (e.key === 'Enter') commitEdit(input.value); };
+        contentEl.appendChild(input);
+        input.focus();
+      } else {
+        const div = document.createElement('div');
+        div.textContent = current.text;
+        div.className = 'text-lg cursor-pointer fade-enter text-gray-800 dark:text-gray-200';
+        div.onclick = () => { editingLine = true; render(); };
+        contentEl.appendChild(div);
+        requestAnimationFrame(() => div.classList.add('fade-enter-active'));
+      }
+      const btns = document.createElement('div');
+      btns.className = 'mt-4 grid grid-cols-2 gap-4';
+      getCurrent().responses.forEach((r,i) => {
+        const b = document.createElement('button');
+        b.textContent = r.text;
+        b.className = 'bg-indigo-500 dark:bg-indigo-600 text-white rounded-lg px-4 py-2 hover:bg-indigo-600 dark:hover:bg-indigo-700 transition fade-enter';
+        b.onclick = () => { path.push(i); editingLine = false; render(); };
+        btns.appendChild(b);
+        requestAnimationFrame(() => b.classList.add('fade-enter-active'));
+      });
+      contentEl.appendChild(btns);
+    }
+
+    // Render tree and attach double-click connect
+    function renderTree() {
+      if (cy) cy.destroy();
+      const nodes = [], edges = [];
+      function traverse(node, id) {
+        nodes.push({ data: { id: id, label: node.text } });
+        node.responses.forEach((child, idx) => {
+          const childId = id + '-' + idx;
+          traverse(child, childId);
+          edges.push({ data: { id: id + '_' + idx, source: id, target: childId } });
+        });
+      }
+      traverse(script, '0');
+      cy = cytoscape({ container: treeViewEl, elements: nodes.concat(edges),
+        style: [
+          { selector: 'node', style: { 'label': 'data(label)', 'shape': 'ellipse', 'width': 80, 'height': 80, 'text-wrap': 'wrap', 'text-max-width': 70, 'text-valign': 'center', 'text-halign': 'center', 'background-color': '#6366F1', 'color': 'white', 'font-size': 12 } },
+          { selector: 'edge', style: { 'curve-style': 'bezier', 'target-arrow-shape': 'triangle', 'line-color': '#A5B4FC', 'target-arrow-color': '#A5B4FC' } }
+        ],
+        layout: { name: 'breadthfirst', directed: true, padding: 10 },
+        userZoomingEnabled: true, userPanningEnabled: true
+      });
+      cy.on('tap', 'node', evt => {
+        const id = evt.target.id();
+        const now = Date.now();
+        if (lastTapNodeId === id && now - lastTapTime < 300) {
+          handleDouble(evt.target);
+          lastTapNodeId = null;
+        } else {
+          lastTapTime = now;
+          lastTapNodeId = id;
+        }
+      });
+    }
+
+    function handleDouble(node) {
+      if (!connectionSource) {
+        connectionSource = node;
+        node.addClass('add-edge-active');
+      } else {
+        const srcId = connectionSource.id();
+        const tgtId = node.id();
+        if (srcId !== tgtId) {
+          record();
+          const src = getNodeById(srcId);
+          const tgt = getNodeById(tgtId);
+          src.responses.push(deepClone(tgt));
+        }
+        connectionSource.removeClass('add-edge-active');
+        connectionSource = null;
+        render();
+      }
+    }
+
+    // Toggle expand within app
+    fsBtn.onclick = () => {
+      treeContainer.classList.toggle('expanded');
+      if (cy) { cy.resize(); cy.fit(); }
+    };
+
+    // Main render function
+    function render() {
+      updateControls();
+      renderContent();
+      renderTree();
+    }
+
+    // Event handlers
+    newResponseEl.onkeydown = e => {
+      if (e.key === 'Enter') {
+        const text = newResponseEl.value.trim();
+        if (!text) return;
+        record();
+        getCurrent().responses.push({ text: text, responses: [] });
+        newResponseEl.value = '';
+        render();
+      }
+    };
+    undoBtn.onclick = () => { if (past.length) { future.push(deepClone(script)); script = past.pop(); path = []; editingLine = false; render(); }};
+    redoBtn.onclick = () => { if (future.length) { past.push(deepClone(script)); script = future.pop(); path = []; editingLine = false; render(); }};
+    deleteBtn.onclick = () => { if (path.length) { record(); const parent = getParent(); parent.responses.splice(path.pop(),1); editingLine = false; render(); }};
+    backBtn.onclick = () => { if (path.length) { path.pop(); editingLine = false; render(); }};
+    saveBtn.onclick = () => {
+      const blob = new Blob([JSON.stringify(script, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.style.display = 'none';
+      a.href = url;
+      a.download = 'sales_assist.json';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    };
+    loadBtn.onclick = () => fileInput.click();
+    fileInput.onchange = e => {
+      const f = e.target.files[0]; if (!f) return; const r = new FileReader();
+      r.onload = () => { try { record(); script = JSON.parse(r.result); path = []; editingLine = false; render(); } catch { alert('Invalid JSON'); } };
+      r.readAsText(f);
+    };
+
+    // Initialize
+    render();
+  </script>
+</body>
+</html>
