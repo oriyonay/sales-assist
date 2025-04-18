@@ -1,11 +1,11 @@
 <!DOCTYPE html>
-<html lang='en' class="light">
+<html lang='en' class='light'>
 <head>
   <meta charset='UTF-8'>
   <meta name='viewport' content='width=device-width, initial-scale=1.0'>
   <title>CourseShare Sales Assist</title>
   <!-- Tailwind CSS -->
-  <script src="https://cdn.tailwindcss.com"></script>
+  <script src='https://cdn.tailwindcss.com'></script>
   <!-- Enable dark mode based on class -->
   <script>
     tailwind.config = {
@@ -13,7 +13,7 @@
     };
   </script>
   <!-- Cytoscape.js for interactive tree view -->
-  <script src="https://unpkg.com/cytoscape/dist/cytoscape.min.js"></script>
+  <script src='https://unpkg.com/cytoscape/dist/cytoscape.min.js'></script>
   <style>
     .fade-enter { opacity: 0; transform: translateY(10px); }
     .fade-enter-active { opacity: 1; transform: translateY(0); transition: opacity 300ms ease-out, transform 300ms ease-out; }
@@ -49,27 +49,28 @@
     .dark .node { background: #4f46e5; }
   </style>
 </head>
-<body class="bg-gray-100 dark:bg-gray-800 flex items-start justify-center p-4 min-h-screen">
-  <div id="app" class="w-full max-w-4xl bg-white dark:bg-gray-900 rounded-2xl shadow-lg p-6 flex flex-col">
-    <h1 class="text-2xl font-bold text-center text-indigo-600 dark:text-indigo-300">CourseShare Sales Assist</h1>
-    <div class="mt-4 flex flex-wrap gap-2 relative">
-      <button id="undoBtn" class="bg-gray-200 dark:bg-gray-600 text-gray-800 dark:text-gray-200 px-4 py-2 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-500 transition">Undo</button>
-      <button id="redoBtn" class="bg-gray-200 dark:bg-gray-600 text-gray-800 dark:text-gray-200 px-4 py-2 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-500 transition">Redo</button>
-      <button id="deleteBtn" class="bg-red-500 text-white px-4 py-2 rounded-lg hover:bg-red-600 transition">Delete Line</button>
-      <button id="backBtn" class="bg-gray-500 text-white px-4 py-2 rounded-lg hover:bg-gray-600 transition">Go Back</button>
-      <button id="saveBtn" class="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 transition">Save</button>
-      <button id="loadBtn" class="bg-indigo-500 text-white px-4 py-2 rounded-lg hover:bg-indigo-600 transition">Load</button>
-      <button id="darkModeBtn">🌓</button>
+<body class='bg-gray-100 dark:bg-gray-800 flex items-start justify-center p-4 min-h-screen'>
+  <div id='app' class='w-full max-w-4xl bg-white dark:bg-gray-900 rounded-2xl shadow-lg p-6 flex flex-col'>
+    <h1 class='text-2xl font-bold text-center text-indigo-600 dark:text-indigo-300'>CourseShare Sales Assist</h1>
+    <div class='mt-4 flex flex-wrap gap-2 relative'>
+      <button id='undoBtn' class='bg-gray-200 dark:bg-gray-600 text-gray-800 dark:text-gray-200 px-4 py-2 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-500 transition'>Undo</button>
+      <button id='redoBtn' class='bg-gray-200 dark:bg-gray-600 text-gray-800 dark:text-gray-200 px-4 py-2 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-500 transition'>Redo</button>
+      <button id='deleteBtn' class='bg-red-500 text-white px-4 py-2 rounded-lg hover:bg-red-600 transition'>Delete Line</button>
+      <button id='backBtn' class='bg-gray-500 text-white px-4 py-2 rounded-lg hover:bg-gray-600 transition'>Go Back</button>
+      <button id='startBtn' class='bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-600 transition'>Start Over</button>
+      <button id='saveBtn' class='bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 transition'>Save</button>
+      <button id='loadBtn' class='bg-indigo-500 text-white px-4 py-2 rounded-lg hover:bg-indigo-600 transition'>Load</button>
+      <button id='darkModeBtn'>🌓</button>
     </div>
-    <div class="mt-4 flex">
-      <input id="newResponse" type="text" placeholder="Add new response..." class="$1 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200" />
+    <div class='mt-4 flex'>
+      <input id='newResponse' type='text' placeholder='Add new response...' class='$1 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200' />
     </div>
-    <div id="content" class="mt-6 flex-1 text-gray-800 dark:text-gray-200"></div>
-    <div id="treeContainer" class="mt-4">
-      <button id="fsBtn">⛶</button>
-      <div id="treeView"></div>
+    <div id='content' class='mt-6 flex-1 text-gray-800 dark:text-gray-200'></div>
+    <div id='treeContainer' class='mt-4'>
+      <button id='fsBtn'>⛶</button>
+      <div id='treeView'></div>
     </div>
-    <input id="fileInput" type="file" accept=".json" class="hidden">
+    <input id='fileInput' type='file' accept='.json' class='hidden'>
   </div>
 
   <script>
@@ -94,6 +95,7 @@
     const redoBtn = document.getElementById('redoBtn');
     const deleteBtn = document.getElementById('deleteBtn');
     const backBtn = document.getElementById('backBtn');
+    const startBtn = document.getElementById('startBtn');
     const saveBtn = document.getElementById('saveBtn');
     const loadBtn = document.getElementById('loadBtn');
     const fileInput = document.getElementById('fileInput');
@@ -110,7 +112,6 @@
       undoBtn.disabled = past.length === 0;
       redoBtn.disabled = future.length === 0;
       backBtn.disabled = path.length === 0;
-      deleteBtn.disabled = path.length === 0;
     }
 
     // Commit line edit
@@ -220,6 +221,13 @@
     fsBtn.onclick = () => {
       treeContainer.classList.toggle('expanded');
       if (cy) { cy.resize(); cy.fit(); }
+    };
+
+    // Start Over: go straight back to root
+    startBtn.onclick = () => {
+      path = [];
+      editingLine = false;
+      render();
     };
 
     // Main render function
